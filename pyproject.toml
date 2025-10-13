@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rhino-core"
+version = "0.1.0"
+description = "Image/Video AI Tools"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+]
+
+[project.optional-dependencies]
+rhcore = [
+    # rhino dependency
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rhcore"]  # Explicitly include the diffusion and trainer packages
