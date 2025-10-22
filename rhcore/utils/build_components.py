@@ -17,21 +17,31 @@ def build_module(config):
     if 'path' in config and 'name' in config:
         """Build a module from configuration."""
         class_ = get_class(config['path'], config['name'])
-    elif '_target_' in config:
-        class_ = get_class(config['_target_'])
+    elif 'mpath' in config:
+        class_ = get_class(config['mpath'])
     else:
-        raise ValueError("Configuration must contain 'path' and 'name' or '_target_' key.")
+        raise ValueError("Configuration must contain 'path' and 'name' or 'mpath' key.")
     
     if 'pretrained' in config and hasattr(class_, 'from_pretrained'):
-        return class_.from_pretrained(config['pretrained'])
+        module = class_.from_pretrained(config['pretrained'])
     elif 'config' in config and hasattr(class_, 'from_config'):
-        return class_.from_config(config['config'])
+        module = class_.from_config(config['config'])
     elif 'config' in config and not hasattr(class_, 'from_config'):
-        return class_(config['config'])
+        module = class_(config['config'])
     elif 'params' in config:
-        return class_(**config['params'])
+        module = class_(**config['params'])
     else:
         raise ValueError("Configuration must contain 'pretrained', 'config', or 'params' key.")
+
+    if 'wrapper' in config:
+        if isinstance(config['wrapper'], dict):
+            wrapper = get_class(config['wrapper']['mpath'])
+            module = wrapper(module, **config['wrapper']['params'])
+        else:
+            wrapper = get_class(config['wrapper'])
+            module = wrapper(module)
+
+    return module
 
 def build_modules(configs):
     """Build multiple modules from configuration."""

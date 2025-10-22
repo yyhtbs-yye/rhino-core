@@ -2,19 +2,26 @@ from copy import deepcopy
 
 import torch
 from rhcore.boats.boat_template import BoatTemplate
-from rhcore.utils.build_modules import build_module, build_modules, build_optimizer, build_lr_scheduler, build_logger
+from rhcore.utils.build_components import (build_module, build_modules, build_optimizer, 
+                                        build_lr_scheduler, build_logger)
+
 from rhcore.loggers.helpers.base_image_visualizer import BaseImageVisualizer
 
 from rhtrain.utils.ddp_utils import ddp_no_sync_all, move_to_device
 from rhtrain.utils.load_save_utils import save_state, load_state
 
+from functools import partial
+
 class BaseBoat(BoatTemplate):
 
     def __init__(self, config={}):
 
+        assert config is not None, "main config must be provided"
+
         self.boat_config = config.get('boat', {})
         self.optimization_config = config.get('optimization', {})
         self.validation_config = config.get('validation', {})
+        self.visualization_config = config.get('visualization', {})
         self.logging_config = config.get('logging', {})
         self.trainer_config = config.get('trainer', {})
 
@@ -27,26 +34,31 @@ class BaseBoat(BoatTemplate):
         self.lr_schedulers = {}
         self.metrics = {}
         self.loggers = {}
+        self.viz = None
 
         self.build_models()
         self.build_losses()
         self.build_optimizers()
         self.build_metrics()
         self.build_others()
-        self.build_loggers()
+
+        if config['rank'] == 0:
+            self.build_loggers()
+            first_logger = next(iter(self.loggers.values()))
+
+            if (self.visualization_config.get('save_images', False) 
+                or self.trainer_config.get('save_images', False)):
+                
+                self.viz = BaseImageVisualizer(first_logger, 
+                                            wnb=self.visualization_config.get('wnb', (0.5, 0.5)), 
+                                            max_images=self.visualization_config.get('max_images', 4),
+                                            dataformats=self.visualization_config.get('dataformats', 'CHW'))
 
         self.use_ema = self.optimization_config.get('use_ema', False)
         if self.use_ema:
             self._setup_ema()
             self.ema_start = self.optimization_config.get('ema_start', 0)
 
-        first_logger = next(iter(self.loggers.values()))
-
-        visualization_config = self.trainer_config.get('visualization', {})
-        self.viz = BaseImageVisualizer(first_logger, 
-                                       wnb=visualization_config.get('wnb', (0.5, 0.5)), 
-                                       max_images=visualization_config.get('max_images', 4),
-                                       dataformats=visualization_config.get('dataformats', 'CHW'))
 
     def to(self, device):
         """
@@ -138,9 +150,9 @@ class BaseBoat(BoatTemplate):
         for current_micro_step, micro_batch in enumerate(micro_batches):
             micro_batch = move_to_device(micro_batch, self.device)
             micro_losses = self.training_calc_losses(micro_batch)
-            micro_target_loss = micro_losses[self.target_loss_key] / self.total_micro_steps
+            micrompathloss = micro_losses[self.target_loss_key] / self.total_micro_steps
             micro_losses_list.append(micro_losses)
-            self.training_backpropagation(micro_target_loss, current_micro_step, scaler)
+            self.training_backpropagation(micrompathloss, current_micro_step, scaler)
 
         self.training_gradient_descent(scaler, active_keys)
         
@@ -152,28 +164,26 @@ class BaseBoat(BoatTemplate):
 
     # ------------------------------------ Visualization ---------------------------------------------
 
-    def visualize_validation(self, named_imgs, batch_idx, trainer_config):
+    def visualize_step(self, named_imgs, batch_idx):
 
-        visualization_config = trainer_config.get('visualization', {})
+        if self.viz is None:
+            return
 
-        # Backward compatibility
-        if visualization_config.get('save_images', False) or trainer_config.get('save_images', False):
-
-            """Visualize validation results."""
-            if visualization_config.get('first_batch_only', True) and batch_idx == 0:
-                # Limit the number of samples to visualize
-                for key in named_imgs.keys():
-                    if named_imgs[key].shape[0] > visualization_config.get('num_vis_samples', 4):
-                        named_imgs[key] = named_imgs[key][:visualization_config.get('num_vis_samples')]
-                
-                # Log visualizations to the experiment tracker
-                self.viz(
-                    images_dict=named_imgs,
-                    keys=list(named_imgs.keys()),
-                    global_step=self.get_global_step(),
-                    prefix='val',
-                    texts='texts',
-                )
+        """Visualize validation results."""
+        if self.visualization_config.get('first_batch_only', True) and batch_idx == 0:
+            # Limit the number of samples to visualize
+            for key in named_imgs.keys():
+                if named_imgs[key].shape[0] > self.visualization_config.get('num_vis_samples', 4):
+                    named_imgs[key] = named_imgs[key][:self.visualization_config.get('num_vis_samples')]
+            
+            # Log visualizations to the experiment tracker
+            self.viz(
+                images_dict=named_imgs,
+                keys=list(named_imgs.keys()),
+                global_step=self.get_global_step(),
+                prefix='val',
+                texts='texts',
+            )
 
     # ------------------------------------ Result Logging ---------------------------------------------
 
@@ -219,12 +229,20 @@ class BaseBoat(BoatTemplate):
 
     def build_optimizers(self):
         for opt_name in self.optimization_config:
-            if 'ema' in opt_name or opt_name not in self.models:
+            if 'ema' in opt_name:
                 continue
-            new_optimizer = build_optimizer(
-                self.models[opt_name].parameters(), 
-                self.optimization_config[opt_name]
-            )
+            elif opt_name not in self.models:
+                bind_to = self.optimization_config[opt_name].pop('bind_to', None)
+                assert bind_to is not None
+                new_optimizer = build_optimizer(
+                    self.models[bind_to].parameters(), 
+                    self.optimization_config[opt_name]
+                )
+            else:
+                new_optimizer = build_optimizer(
+                    self.models[opt_name].parameters(), 
+                    self.optimization_config[opt_name]
+                )
             if self.optimizers.get(opt_name) is None or type(new_optimizer) != type(self.optimizers[opt_name]):
                 self.optimizers[opt_name] = new_optimizer
 
@@ -358,3 +376,30 @@ class BaseBoat(BoatTemplate):
 
     def build_others(self):
         pass
+
+    def _install_forward_hooks(self, model_layer_names={}, hook_fn=None):
+        for model_name in model_layer_names:
+
+            if model_name not in self.hook_memories:
+                self.hook_memories[model_name] = {}
+
+            if model_name not in self.models:
+                continue
+            
+            layer_names = model_layer_names[model_name]
+            if isinstance(layer_names, str):
+                layer_names = [layer_names]
+
+            for layer_name in layer_names:
+                hook_handle = self.models[model_name].get_submodule(layer_name).register_forward_hook(
+                    partial(hook_fn, layer_name, self.hook_memories[model_name])
+                )
+
+    def _collect_from_forward_hooks(self, batch, batch_idx):
+        if 'hook_fx' not in batch:
+            batch['hook_fx'] = {}
+        for model_name, memory in self.hook_memories.items():
+            for layer_name, output in memory.items():
+                if output is not None:
+                    batch['hook_fx'][f"{model_name}_{layer_name}"] = output
+        return batch

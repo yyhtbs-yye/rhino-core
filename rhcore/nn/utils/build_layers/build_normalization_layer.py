@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from typing import Dict, Any, Tuple, Optional
-from rhcore.nn.pixel_norm import PixelNorm
+from rhcore.nn.ops.pixel_norm import PixelNorm
 
 _NORM_LAYERS = {
     # batch norms

@@ -21,7 +21,7 @@ def init_weights(
     nonlinearity: Literal[
         "relu", "leaky_relu", "prelu",
         "gelu", "silu", "swish", "mish", "softplus",
-        "selu", "tanh", "sigmoid", "linear", "elu", "celu"
+        "selu", "tanh", "sigmoid", "linear", "elu", "celu", None
     ] = "relu",
     negative_slope: float = 0.01,
     skip_if_has_init: bool = True,
@@ -83,24 +83,27 @@ def init_weights(
     if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Conv3d,
                       nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d,
                       nn.Linear)):
-        nl = nonlinearity.lower()
-
-        # Choose init by nonlinearity
-        if nl == "selu":
-            # Self-Normalizing Networks recommendation
-            _lecun_normal_(m.weight)
-        elif nl in {"tanh", "sigmoid", "linear"}:
-            gain = nn.init.calculate_gain(nl)  # tanh≈5/3, sigmoid/linear≈1
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight, gain=gain)
-            else:
-                # For convs, Xavier works too when followed by (near)linear squashing
-                nn.init.xavier_uniform_(m.weight, gain=gain)
-        elif nl in {"leaky_relu", "prelu"}:
-            nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu", a=negative_slope)
+        if nonlinearity is None:
+            nn.init.xavier_uniform_(m.weight, gain=1.0)
         else:
-            # ReLU-like bucket: relu/elu/celu/gelu/silu/swish/mish/softplus
-            nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            nl = nonlinearity.lower()
+
+            # Choose init by nonlinearity
+            if nl == "selu":
+                # Self-Normalizing Networks recommendation
+                _lecun_normal_(m.weight)
+            elif nl in {"tanh", "sigmoid", "linear"}:
+                gain = nn.init.calculate_gain(nl)  # tanh≈5/3, sigmoid/linear≈1
+                if isinstance(m, nn.Linear):
+                    nn.init.xavier_uniform_(m.weight, gain=gain)
+                else:
+                    # For convs, Xavier works too when followed by (near)linear squashing
+                    nn.init.xavier_uniform_(m.weight, gain=gain)
+            elif nl in {"leaky_relu", "prelu"}:
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu", a=negative_slope)
+            else:
+                # ReLU-like bucket: relu/elu/celu/gelu/silu/swish/mish/softplus
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
 
         if getattr(m, "bias", None) is not None:
             nn.init.zeros_(m.bias)

@@ -1,4 +1,4 @@
-from rhcore.utils.build_modules import build_dataset
+from rhcore.utils.build_components import build_dataset
 from torch.utils.data import DataLoader, DistributedSampler
 import torch.multiprocessing as mp
 from functools import partial

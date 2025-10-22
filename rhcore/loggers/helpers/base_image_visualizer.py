@@ -30,7 +30,6 @@ class BaseImageVisualizer:
             keys: List of lists, where each inner list contains keys to compare side by side
             global_step: Current global step for logging
             prefix: Prefix for the logged image names
-            max_images: Maximum number of images to include from each batch
             texts: Optional list of text descriptions to include with images
         """
         
@@ -59,7 +58,7 @@ class BaseImageVisualizer:
             images_to_compare.append(img)
             
             # Ensure all images have the same batch size and dimensions
-            batch_size = min(max_images, min(img.shape[0] for img in images_to_compare))
+            batch_size = min(self.max_images, min(img.shape[0] for img in images_to_compare))
             images_to_compare = [img[:batch_size] for img in images_to_compare]
             
             # Create comparison grid - first horizontally concatenate pairs in each batch item

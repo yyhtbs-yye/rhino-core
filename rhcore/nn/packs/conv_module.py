@@ -3,8 +3,7 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from rhcore.nn.utils.build_layers import (build_padding_layer, build_convolution_layer, 
-                                       build_activation_layer, build_normalization_layer)
+from rhcore.nn.utils.build_layers import (build_padding_layer, build_convolution_layer, build_activation_layer, build_normalization_layer)
 
 from rhcore.nn.utils.init_weights.std_init import init_weights
 
@@ -99,9 +98,10 @@ class ConvModule(nn.Module):
             if act_cfg_['type'] not in ['Tanh', 'PReLU', 'Sigmoid', 'HSigmoid', 'Swish', 'GELU']:
                 act_cfg_.setdefault('inplace', False)
             self.activate = build_activation_layer(act_cfg_)
-
-        # Use msra init by default
-        self.apply(lambda m: init_weights(m, nonlinearity=act_cfg_['type'].lower()))
+            act_types = act_cfg_['type'].lower()
+        else:
+            act_types = None
+        self.apply(lambda m: init_weights(m, nonlinearity=act_types))
 
     @property
     def norm(self):

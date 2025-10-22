@@ -37,7 +37,7 @@ class BoatTemplate(ABC):
         pass
 
     @abstractmethod
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, epoch):
         pass
 
     @abstractmethod
@@ -73,14 +73,6 @@ class BoatTemplate(ABC):
         pass      
 
     @abstractmethod
-    def _calc_reference_quality_metrics(self, predictions, targets):
-        pass
-
-    @abstractmethod
-    def _calc_noreference_quality_metrics(self, predictions):
-        pass
-
-    @abstractmethod
     def _calc_metrics(self, valid_output):
         pass
 
@@ -109,7 +101,7 @@ class BoatTemplate(ABC):
         pass
 
     @abstractmethod
-    def visualize_validation(self, logger, named_imgs, batch_idx, trainer_config):
+    def visualize_step(self, logger, named_imgs, batch_idx, trainer_config):
         pass
         
     @abstractmethod
