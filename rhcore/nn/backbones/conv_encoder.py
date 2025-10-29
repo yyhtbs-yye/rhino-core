@@ -6,7 +6,11 @@ class ConvEncoder(nn.Module):
     """Downsampling stack (inverse of the upsampling tower)."""
     def __init__(self, base_channels, num_downsamples, norm_cfg, act_cfg):
         super().__init__()
-        use_bias = norm_cfg['type'] == 'IN'
+
+        if norm_cfg is None:
+            use_bias = True
+        else:
+            use_bias = norm_cfg['type'] == 'IN'
 
         layers = []
         curr_channels = base_channels

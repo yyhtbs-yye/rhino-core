@@ -1,16 +1,26 @@
 from copy import deepcopy
 
 import torch
+from functools import partial
+
 from rhcore.boats.boat_template import BoatTemplate
 from rhcore.utils.build_components import (build_module, build_modules, build_optimizer, 
                                         build_lr_scheduler, build_logger)
-
 from rhcore.loggers.helpers.base_image_visualizer import BaseImageVisualizer
-
 from rhtrain.utils.ddp_utils import ddp_no_sync_all, move_to_device
 from rhtrain.utils.load_save_utils import save_state, load_state
 
-from functools import partial
+import warnings
+
+def _has_grad(t):
+    """
+    Returns True if `t` participates in autograd:
+    - requires_grad=True (leaf or non-leaf), or
+    - has a grad_fn (non-leaf produced by ops on tensors requiring grad)
+    """
+    if not isinstance(t, torch.Tensor):
+        return False
+    return t.requires_grad or (t.grad_fn is not None)
 
 class BaseBoat(BoatTemplate):
 
@@ -74,6 +84,10 @@ class BaseBoat(BoatTemplate):
         for name, model in self.models.items():
             if hasattr(model, 'to'):
                 self.models[name] = model.to(device)
+        if hasattr(self, 'losses'):
+            for name, loss in self.losses.items():
+                if hasattr(loss, 'to'):
+                    self.losses[name] = loss.to(device)
         if hasattr(self, 'metrics'):
             for name, metric in self.metrics.items():
                 if hasattr(metric, 'to'):
@@ -114,15 +128,39 @@ class BaseBoat(BoatTemplate):
 
     # ------------------------------------ Training Step ---------------------------------------------
 
-    def training_backpropagation(self, loss, current_micro_step, scaler):
+    def training_backpropagation(self, losses, current_micro_step, scaler):
+        if not isinstance(losses, (list, tuple)):
+            losses = [losses]
 
         use_no_sync = (self.total_micro_steps > 1) and (current_micro_step < self.total_micro_steps - 1)
 
         with ddp_no_sync_all(self, enabled=use_no_sync):
-            if scaler is not None and getattr(scaler, "is_enabled", lambda: False)():
-                scaler.scale(loss).backward()
-            else:
-                loss.backward()
+            for idx, loss in enumerate(losses):
+                # Skip non-tensors entirely
+                if not isinstance(loss, torch.Tensor):
+                    warnings.warn(f"[micro {current_micro_step}] loss[{idx}] is not a Tensor; skipping backward.")
+                    continue
+
+                # Optional sanity checks (won't block valid zero losses with real grad paths)
+                if not _has_grad(loss):
+                    # This covers constants like torch.tensor(0.) with requires_grad=False,
+                    # or tensors detached from the graph.
+                    warnings.warn(f"[micro {current_micro_step}] loss[{idx}] has no grad path; skipping backward.")
+                    continue
+
+                if not torch.isfinite(loss):
+                    warnings.warn(f"[micro {current_micro_step}] loss[{idx}] is not finite ({loss}); skipping backward.")
+                    continue
+
+                # If it's not scalar, reduce to a scalar to be safe (mean is typical)
+                if loss.ndim != 0:
+                    loss = loss.mean()
+
+                if scaler is not None and getattr(scaler, "is_enabled", lambda: False)():
+                    scaler.scale(loss).backward()
+                else:
+                    loss.backward()
+
 
     def training_gradient_descent(self, scaler, active_keys):
 
@@ -150,8 +188,13 @@ class BaseBoat(BoatTemplate):
         for current_micro_step, micro_batch in enumerate(micro_batches):
             micro_batch = move_to_device(micro_batch, self.device)
             micro_losses = self.training_calc_losses(micro_batch)
-            micrompathloss = micro_losses[self.target_loss_key] / self.total_micro_steps
             micro_losses_list.append(micro_losses)
+
+            if isinstance(self.target_loss_key, str):
+                micrompathloss = micro_losses[self.target_loss_key] / self.total_micro_steps
+            elif isinstance(self.target_loss_key, list) or isinstance(self.target_loss_key, tuple):
+                micrompathloss = [micro_losses[k] / self.total_micro_steps for k in self.target_loss_key]
+
             self.training_backpropagation(micrompathloss, current_micro_step, scaler)
 
         self.training_gradient_descent(scaler, active_keys)
