@@ -39,6 +39,7 @@ class BaseBoat(BoatTemplate):
         self.target_loss_key = self.optimization_config.pop('target_loss_key', 'total_loss')
 
         self.models = {}
+        self.pretrained = {}
         self.losses = {}
         self.optimizers = {}
         self.lr_schedulers = {}
@@ -47,6 +48,7 @@ class BaseBoat(BoatTemplate):
         self.viz = None
 
         self.build_models()
+        self.build_pretrained()
         self.build_losses()
         self.build_optimizers()
         self.build_metrics()
@@ -84,14 +86,22 @@ class BaseBoat(BoatTemplate):
         for name, model in self.models.items():
             if hasattr(model, 'to'):
                 self.models[name] = model.to(device)
+        
         if hasattr(self, 'losses'):
             for name, loss in self.losses.items():
                 if hasattr(loss, 'to'):
                     self.losses[name] = loss.to(device)
+        
         if hasattr(self, 'metrics'):
             for name, metric in self.metrics.items():
                 if hasattr(metric, 'to'):
                     self.metrics[name] = metric.to(device)
+        
+        if hasattr(self, 'pretrained'):
+            for name, model in self.pretrained.items():
+                if hasattr(model, 'to'):
+                    self.pretrained[name] = model.to(self.device)
+        
         # Move optimizer states to the same device
         self.move_optimizer_to_device(device)
         return self
@@ -261,6 +271,12 @@ class BaseBoat(BoatTemplate):
             if self.models.get(model_name) is None or type(new_module) != type(self.models[model_name]):
                 self.models[model_name] = new_module
 
+    def build_pretrained(self):
+        for model_name in self.boat_config.get('pretrained', {}):
+            new_module = build_module(self.boat_config['pretrained'][model_name])
+            if self.pretrained.get(model_name) is None or type(new_module) != type(self.pretrained[model_name]):
+                self.pretrained[model_name] = new_module
+
     def build_losses(self):
         for loss_name in self.boat_config.get('losses', {}):
             new_module = build_module(self.boat_config['losses'][loss_name])
@@ -274,11 +290,18 @@ class BaseBoat(BoatTemplate):
         for opt_name in self.optimization_config:
             if 'ema' in opt_name:
                 continue
-            elif opt_name not in self.models:
+            elif 'bind_to' in self.optimization_config[opt_name]:
                 bind_to = self.optimization_config[opt_name].pop('bind_to', None)
                 assert bind_to is not None
+                if isinstance(bind_to, str):
+                    bind_to = [bind_to] 
+
+                all_params = []
+                for b in bind_to:
+                    assert b in self.models, f"Optimizer bind_to model '{b}' not found in boat models."
+                    all_params.extend(list(self.models[b].parameters()))
                 new_optimizer = build_optimizer(
-                    self.models[bind_to].parameters(), 
+                    all_params,
                     self.optimization_config[opt_name]
                 )
             else:
@@ -446,3 +469,4 @@ class BaseBoat(BoatTemplate):
                 if output is not None:
                     batch['hook_fx'][f"{model_name}_{layer_name}"] = output
         return batch
+    
