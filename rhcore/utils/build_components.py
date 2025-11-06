@@ -1,3 +1,5 @@
+import torch
+
 import importlib
 
 def get_class(path, name=None):
@@ -22,14 +24,21 @@ def build_module(config):
     else:
         raise ValueError("Configuration must contain 'path' and 'name' or 'mpath' key.")
     
+    load_pretrained = None
+
     if 'pretrained' in config and hasattr(class_, 'from_pretrained'):
-        module = class_.from_pretrained(config['pretrained'])
+        module = class_.from_pretrained(config['pretrained'])        
     elif 'config' in config and hasattr(class_, 'from_config'):
         module = class_.from_config(config['config'])
     elif 'config' in config and not hasattr(class_, 'from_config'):
         module = class_(config['config'])
     elif 'params' in config:
+        if 'load_pretrained' in config['params']:
+            load_pretrained = config['params'].pop('load_pretrained')
         module = class_(**config['params'])
+        if load_pretrained is not None:
+            module.load_state_dict(torch.load(load_pretrained, map_location="cpu"), strict=True)
+
     else:
         raise ValueError("Configuration must contain 'pretrained', 'config', or 'params' key.")
 
