@@ -41,6 +41,7 @@ class BaseBoat(BoatTemplate):
         self.models = {}
         self.pretrained = {}
         self.losses = {}
+        self.weight_schedulers = {}
         self.optimizers = {}
         self.lr_schedulers = {}
         self.metrics = {}
@@ -279,10 +280,23 @@ class BaseBoat(BoatTemplate):
 
     def build_losses(self):
         for loss_name in self.boat_config.get('losses', {}):
-            new_module = build_module(self.boat_config['losses'][loss_name])
+
+            loss_config = self.boat_config['losses'][loss_name]
+
+            if 'weight' in loss_config:
+                w = float(loss_config.pop('weight'))
+                self.weight_schedulers[loss_name] = lambda _step: w
+            elif 'weight_scheduler' in loss_config:
+                weight_scheduler_config = loss_config.pop('weight_scheduler')
+                self.weight_schedulers[loss_name] = build_module(weight_scheduler_config)
+            else:
+                self.weight_schedulers[loss_name] = lambda _step: 1.0
+
+            new_module = build_module(loss_config)
+
             if self.losses.get(loss_name) is None or type(new_module) != type(self.losses[loss_name]):
                 self.losses[loss_name] = new_module
-                
+
     def build_metrics(self):
         self.metrics = build_modules(self.validation_config.get('metrics', {}))
 
@@ -309,8 +323,23 @@ class BaseBoat(BoatTemplate):
                     self.models[opt_name].parameters(), 
                     self.optimization_config[opt_name]
                 )
+
             if self.optimizers.get(opt_name) is None or type(new_optimizer) != type(self.optimizers[opt_name]):
                 self.optimizers[opt_name] = new_optimizer
+            else:
+                # same type and already have an optimizer (possibly with loaded state):
+                # keep state, overwrite lr & other non-stateful hyperparams
+                old_opt = self.optimizers[opt_name]
+
+                # if param group structure changed, safest is to replace
+                if len(old_opt.param_groups) != len(new_optimizer.param_groups):
+                    self.optimizers[opt_name] = new_optimizer
+                    continue
+
+                for g_old, g_new in zip(old_opt.param_groups, new_optimizer.param_groups):
+                    for k, v in g_new.items():
+                        if k != "params":      # overwrite existing params with new ones, update lr, betas, weight_decay, etc.
+                            g_old[k] = v
 
         self.build_lr_scheduler_by_name(opt_name)
 

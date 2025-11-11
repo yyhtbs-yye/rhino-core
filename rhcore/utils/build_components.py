@@ -22,7 +22,7 @@ def build_module(config):
     elif 'mpath' in config:
         class_ = get_class(config['mpath'])
     else:
-        raise ValueError("Configuration must contain 'path' and 'name' or 'mpath' key.")
+        raise ValueError("Configuration must contain ('path' and 'name') or ('mpath') key.")
     
     load_pretrained = None
 
@@ -38,25 +38,26 @@ def build_module(config):
         module = class_(**config['params'])
         if load_pretrained is not None:
             module.load_state_dict(torch.load(load_pretrained, map_location="cpu"), strict=True)
-
     else:
         raise ValueError("Configuration must contain 'pretrained', 'config', or 'params' key.")
 
     if 'wrapper' in config:
-        if isinstance(config['wrapper'], dict):
-            wrapper = get_class(config['wrapper']['mpath'])
-            module = wrapper(module, **config['wrapper']['params'])
-        else:
-            wrapper = get_class(config['wrapper'])
-            module = wrapper(module)
+        if isinstance(config['wrapper'], dict): # It is the case that the wrapper needs parameters
+            wrapper_class_ = get_class(config['wrapper']['mpath'])
+            module = wrapper_class_(module, **config['wrapper']['params'])
+        else:                                   # It is the case that the wrapper DOES NOT need any parameter
+            wrapper_class_ = get_class(config['wrapper'])
+            module = wrapper_class_(module)
 
     return module
 
 def build_modules(configs):
     """Build multiple modules from configuration."""
     modules = {}
+
     for k, v in configs.items():
         modules[k] = build_module(v)
+    
     return modules
 
 def build_optimizer(model_parameters, config):
