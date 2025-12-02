@@ -13,6 +13,7 @@ _CONV_LAYERS = {
     'ConvTranspose1d': nn.ConvTranspose1d,
     'ConvTranspose2d': nn.ConvTranspose2d,
     'ConvTranspose3d': nn.ConvTranspose3d,
+    'deconv': nn.ConvTranspose2d,
 }
 
 def build_convolution_layer(conv_cfg: Optional[Dict[str, Any]],

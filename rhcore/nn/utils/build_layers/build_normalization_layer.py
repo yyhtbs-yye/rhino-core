@@ -19,6 +19,7 @@ _NORM_LAYERS = {
     'GN': nn.GroupNorm,
     'LN': nn.LayerNorm,
     'PN': PixelNorm,
+    'PixelNorm': PixelNorm,
 }
 
 def build_normalization_layer(norm_cfg: Dict[str, Any],

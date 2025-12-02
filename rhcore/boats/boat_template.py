@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import torch
 
 class BoatTemplate(ABC):
     """
@@ -16,18 +17,77 @@ class BoatTemplate(ABC):
     def predict(self, x):
         pass
 
-    @abstractmethod
     def to(self, device):
+        """
+        Move all models and metrics to the specified device.
+        
+        Args:
+            device: The device to move the models to (e.g., 'cuda:3', 'cpu')
+            
+        Returns:
+            self: The boat with models on the specified device
+        """
+
+        def move_optimizer_to_device(optimizers, device):        # DO NOT edit optim.param_groups here
+            for _, optim in optimizers.items():
+                # move state tensors
+                for state in optim.state.values():
+                    for k, v in list(state.items()):
+                        if torch.is_tensor(v):
+                            state[k] = v.to(device)
+        self.device = device
+        for name, model in self.models.items():
+            if hasattr(model, 'to'):
+                self.models[name] = model.to(device)
+
+        if hasattr(self, 'ema_models'):
+            for name, model in self.ema_models.items():
+                if hasattr(model, 'to'):
+                    self.ema_models[name] = model.to(device)
+
+        if hasattr(self, 'losses'):
+            for name, loss in self.losses.items():
+                if hasattr(loss, 'to'):
+                    self.losses[name] = loss.to(device)
+        
+        if hasattr(self, 'metrics'):
+            for name, metric in self.metrics.items():
+                if hasattr(metric, 'to'):
+                    self.metrics[name] = metric.to(device)
+        
+        if hasattr(self, 'pretrained'):
+            for name, model in self.pretrained.items():
+                if hasattr(model, 'to'):
+                    self.pretrained[name] = model.to(self.device)
+        
+        # Move optimizer states to the same device
+        move_optimizer_to_device(self.optimizers, device)
+        return self
+
+    def parameters(self):
+        for model_name, model in self.models.items():
+            if hasattr(model, 'parameters'):
+                for param in model.parameters():
+                    yield param    
+
+    def train(self): # Set all models to training mode.
+
+        for model_name, model in self.models.items():
+            if hasattr(model, 'train'):
+                model.train()
+        return self
+    
+    def eval(self): # Set all models to evaluation mode.
+
+        for model_name, model in self.models.items():
+            if hasattr(model, 'eval'):
+                model.eval()
+        return self
+    
+    @abstractmethod
+    def training_lr_scheduling_step(self):
         pass
 
-    @abstractmethod
-    def move_optimizer_to_device(self, device):
-        pass
-    
-    @abstractmethod
-    def parameters(self):
-        pass
-    
     @abstractmethod
     def training_backpropagation(self, loss, current_micro_step, scaler):
         pass
@@ -37,89 +97,43 @@ class BoatTemplate(ABC):
         pass
 
     @abstractmethod
+    def train_a_group(self, group_config, batch, batch_idx, epoch, *, scaler):
+        pass
+
+    @abstractmethod
+    def training_all(self, batch, batch_idx, epoch, *, scaler):
+        pass
+
+    @abstractmethod
     def validation_step(self, batch, batch_idx, epoch):
         pass
 
-    @abstractmethod
-    def save_state(self, run_folder, prefix, global_step, epoch):
-        pass
-
-    @abstractmethod
-    def load_state(self, state_path, strict):
-        pass
-    
-    @abstractmethod
-    def training_lr_scheduling_step(self):
-        pass
-    
-    @abstractmethod
-    def train(self):
-        pass      
-    
-    @abstractmethod
-    def eval(self):
-        pass      
-    
-    @abstractmethod
-    def build_losses(self):
-        pass      
-
-    @abstractmethod
-    def build_metrics(self):
-        pass      
-
-    @abstractmethod
-    def build_optimizers(self):
-        pass      
-
-    @abstractmethod
-    def _calc_metrics(self, valid_output):
-        pass
-
-    @abstractmethod
-    def _log_values(self, logger, results, prefix):
-        pass
-
-    @abstractmethod
-    def _log_value(self, logger, result, metric_name, prefix):
-        pass
-
-    @abstractmethod
-    def log_train_losses(self, logger, losses):
-        pass
-
-    @abstractmethod
-    def log_valid_metrics(self, logger, metrics):
-        pass
-
-    @abstractmethod
-    def _zero_grad(self, active_keys):
-        pass
-
-    @abstractmethod
-    def training_step(self, batch, batch_idx, epoch, *, scaler):
-        pass
-
-    @abstractmethod
-    def visualize_step(self, logger, named_imgs, batch_idx, trainer_config):
-        pass
-        
-    @abstractmethod
     def get_global_step(self):
-        pass
+        return self.global_step()
     
-    @abstractmethod
     def attach_global_step(self, global_step):
-        pass
+        self.global_step = global_step
 
-    @abstractmethod
-    def build_lr_scheduler_by_name(self, model_name):
-        pass
+    # ------------------------------------ Gradient Management -------------------------
+    def _unfreeze_all(self):
+        for name in self.models:
+            self.models[name].requires_grad_(True)
 
-    @abstractmethod
-    def _setup_ema(self):
-        pass
+    def _freeze_all(self):
+        for name in self.models:
+            self.models[name].requires_grad_(False)
 
-    @abstractmethod
-    def _update_ema(self):
-        pass
+    def _freeze_all_except(self, active_models):
+        for name in self.models:
+            model = self.models[name]
+            if not hasattr(model, 'requires_grad_'):
+                continue
+            if name in active_models:
+                model.requires_grad_(True)
+            else:
+                model.requires_grad_(False)
+
+    def _zero_grad(self, active_keys, set_to_none=True):
+        for key in active_keys:
+            self.optimizers[key].zero_grad(set_to_none=set_to_none)
+

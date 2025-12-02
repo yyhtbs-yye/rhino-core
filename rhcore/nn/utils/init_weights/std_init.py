@@ -15,6 +15,21 @@ def _lecun_normal_(w: torch.Tensor) -> None:
     std = 1.0 / math.sqrt(_fan_in(w))
     nn.init.normal_(w, mean=0.0, std=std)
 
+def normal_init(module: nn.Module, mean: float = 0.0, std: float = 0.02):
+    """Replacement for timm.layers.normal_init."""
+    if hasattr(module, 'weight') and module.weight is not None:
+        nn.init.normal_(module.weight, mean=mean, std=std)
+    if hasattr(module, 'bias') and module.bias is not None:
+        nn.init.constant_(module.bias, 0.0)
+
+
+def xavier_init(module: nn.Module, gain: float = 1.0):
+    """Replacement for timm.layers.xavier_init (uniform version)."""
+    if hasattr(module, 'weight') and module.weight is not None:
+        nn.init.xavier_uniform_(module.weight, gain=gain)
+    if hasattr(module, 'bias') and module.bias is not None:
+        nn.init.constant_(module.bias, 0.0)
+
 def init_weights(
     m: nn.Module,
     *,

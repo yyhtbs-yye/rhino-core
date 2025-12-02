@@ -105,12 +105,12 @@ class BasicImageDataset(Dataset):
         return len(self.image_paths)
         
     def __getitem__(self, idx):
-        # Get the key at the specified index
         key = self.image_keys[idx]
-        # Get the data for this key
-        data = self.image_paths[key]
         
-        # Apply transforms
+        # Make a shallow copy so transforms can safely mutate
+        data = dict(self.image_paths[key])
+        # or: data = self.image_paths[key].copy()
+        
         for transform in self.transform_pipeline:
             data = transform(data)
             
