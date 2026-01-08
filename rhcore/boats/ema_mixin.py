@@ -6,6 +6,8 @@ class EMAMixIn:
         self.ema_models = {}
         self.ema_config_dict = ema_config_dict
 
+        self.use_ema = False
+
         for name, config in ema_config_dict.items():
             assert name in self.models, f"EMA target '{name}' not found in self.models"
 
@@ -15,6 +17,8 @@ class EMAMixIn:
             ema_model.ema_start = config.get('ema_start', 0)
 
             self.ema_models[name] = ema_model
+
+            self.use_ema = True
 
     @torch.no_grad()
     def update_ema(self):

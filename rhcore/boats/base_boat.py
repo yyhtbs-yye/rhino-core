@@ -45,7 +45,17 @@ class BaseBoat(BoatTemplate, EMAMixIn, LogMixIn, BuildMixin, SaveLoadMixin):
             EMAMixIn.__init__(self, self.ema_config)
 
         self.ordered_groups = config['boat'].get('ordered_groups', None)
-
+        if self.ordered_groups is None or len(self.ordered_groups) == 0:
+            self.ordered_groups = [
+                {
+                    'boat_loss_method_str': 'training_calc_losses',
+                    'target_loss_name': 'total_loss',
+                    'models': ['net'],
+                    'optimizers': ['net'],
+                    'train_interval': 1,
+                },
+            ]
+        
     def training_backpropagation(self, losses, current_micro_step, scaler):
 
         if not isinstance(losses, (list, tuple)):

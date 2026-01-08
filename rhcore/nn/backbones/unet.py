@@ -4,25 +4,6 @@ import torch.nn as nn
 from rhcore.nn.packs.conv_module import ConvModule
 
 class UnetSkipConnectionBlock(nn.Module):
-    """Construct a Unet submodule with skip connections, with the following.
-
-    structure: downsampling - `submodule` - upsampling.
-
-    Args:
-        outer_channels (int): Number of channels at the outer conv layer.
-        inner_channels (int): Number of channels at the inner conv layer.
-        in_channels (int): Number of channels in input images/features. If is
-            None, equals to `outer_channels`. Default: None.
-        submodule (UnetSkipConnectionBlock): Previously constructed submodule.
-            Default: None.
-        is_outermost (bool): Whether this module is the outermost module.
-            Default: False.
-        is_innermost (bool): Whether this module is the innermost module.
-            Default: False.
-        norm_cfg (dict): Config dict to build norm layer. Default:
-            `dict(type='BN')`.
-        use_dropout (bool): Whether to use dropout layers. Default: False.
-    """
 
     def __init__(self,
                  outer_channels,
