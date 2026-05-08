@@ -12,10 +12,15 @@ class BuildMixin:
         self.pretrained = build_modules(boat_config.get('pretrained', {}))
         self.others = build_modules(boat_config.get('others', {}))
         self.processors = self.build_processors(boat_config.get('processors', {}))
-        self.losses, self.loss_weight_schedulers = self.build_losses(boat_config['losses'])
+        self.losses, self.loss_weight_schedulers = self.build_losses(boat_config['losses']) if 'losses' in boat_config else ({}, {})
         self.optimizers, self.gradient_clipping, self.lr_schedulers = self.build_optimizers(config['optimization'])
 
         self.metrics = build_modules(config['validation'].get('metrics', {}))
+
+        if 'offline_evaluation' in config:
+            self.offline_calls = build_modules(config['offline_evaluation'].get('calls', {}))
+            self.save_folder_path = config['offline_evaluation'].get('save_folder_path', None)
+
 
     def build_losses(self, configs):
 

@@ -1,6 +1,19 @@
 import torch
 
 import importlib
+from functools import partial
+
+class CallableWrapper:
+    def __init__(self, func, **attrs):
+        self.func = func
+        self.__name__ = getattr(func, "__name__", self.__class__.__name__)
+        self.__doc__ = getattr(func, "__doc__", None)
+
+        for k, v in attrs.items():
+            setattr(self, k, v)
+
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
 
 def get_class(path, name=None):
     """Dynamically load a class from a module."""
@@ -15,6 +28,22 @@ def build_module(config):
 
     if config is None:
         return None
+
+    config_type = config.get('_type')
+    if config_type is not None:
+        config_type = str(config_type).strip()
+        if config_type == 'func':
+            if 'path' in config and 'name' in config:
+                func = get_class(config['path'], config['name'])
+            elif 'mpath' in config:
+                func = get_class(config['mpath'])
+            else:
+                raise ValueError("Function configuration must contain ('path' and 'name') or ('mpath') key.")
+
+            extra_configs = {k: config[k] for k in config if k[0] == '_'}
+            return CallableWrapper(partial(func, **config.get('params', {})), **extra_configs)
+
+        raise ValueError(f"Unsupported module _type: {config_type}")
     
     if 'path' in config and 'name' in config:
         """Build a module from configuration."""

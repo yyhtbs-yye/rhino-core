@@ -13,10 +13,6 @@ class BoatTemplate(ABC):
     def __init__(self, config):
         pass
 
-    @abstractmethod
-    def predict(self, x):
-        pass
-
     def to(self, device):
         """
         Move all models and metrics to the specified device.

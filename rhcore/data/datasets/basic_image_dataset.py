@@ -12,6 +12,7 @@ class BasicImageDataset(Dataset):
         # Extract configuration from dataset_config dictionary
         self.folder_paths = dataset_config.get('folder_paths', {})
         self.data_prefix = dataset_config.get('data_prefix', {})
+        self.inflate_factor = dataset_config.get('inflate_factor', 1)
         
         self.max_dataset_size = dataset_config.get('max_dataset_size', None)
 
@@ -99,12 +100,18 @@ class BasicImageDataset(Dataset):
         return transforms_list
         
     def __len__(self):
+
+        self.raw_len = len(self.image_paths)
+        self.inflate_len = self.raw_len * self.inflate_factor
         if self.max_dataset_size is not None:
-            return min(len(self.image_paths), self.max_dataset_size)
+            return min(self.inflate_len, self.max_dataset_size)
         
-        return len(self.image_paths)
+        return self.inflate_len
         
     def __getitem__(self, idx):
+
+        idx = idx % self.raw_len  # Wrap around if idx exceeds raw_len
+        
         key = self.image_keys[idx]
         
         # Make a shallow copy so transforms can safely mutate

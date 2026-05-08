@@ -4,7 +4,7 @@ class SigmoidFadeIn:
     """0 -> 1 S-shaped logistic ramp starting at start_step and ending ~at start_step+duration.
     'eps' controls how close to 0/1 the endpoints get at the boundaries.
     """
-    def __init__(self, max_weight=1.0, start_step=5_000, duration=50_000, step_size=5, eps=1e-6):
+    def __init__(self, max_weight=1.0, start_step=5_000, duration=20_000, step_size=5, eps=1e-6):
         assert duration > 0 and step_size >= 1 and 0 < eps < 0.5
         self.start_step = start_step
         self.duration = duration

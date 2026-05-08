@@ -56,6 +56,9 @@ class BaseBoat(BoatTemplate, EMAMixIn, LogMixIn, BuildMixin, SaveLoadMixin):
                 },
             ]
         
+    def maybe_get_ema(self, name):
+        return self.models[f'{name}_ema'] if f'{name}_ema' in self.models and self.use_ema else self.models[name]
+
     def training_backpropagation(self, losses, current_micro_step, scaler):
 
         if not isinstance(losses, (list, tuple)):
